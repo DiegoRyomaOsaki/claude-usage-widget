@@ -1,0 +1,8 @@
+# Build output — the app bundle is produced by build.sh
+build/
+
+# Runtime state lives in ~/Library/Application Support/ClaudeUsageWidget/
+status.json
+
+.DS_Store
+*.ips
