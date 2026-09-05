@@ -14,10 +14,10 @@ if CommandLine.arguments.contains("--refresh") {
 }
 
 /// Menu-bar accessory: a tinted spark plus the session percentage, and the prototype's
-/// popover behind it.
-final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
+/// panel behind it.
+final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
-    private var popover: NSPopover!
+    private var panel: UsagePanelController!
     private let model = UsageModel()
     private var pollTimer: Timer?
 
@@ -27,13 +27,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         statusItem.button?.target = self
         statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
 
-        popover = NSPopover()
-        popover.behavior = .transient
-        popover.delegate = self
-        popover.contentViewController = NSHostingController(rootView: MenuBarPopover(model: model))
+        panel = UsagePanelController(rootView: MenuBarPopover(model: model))
 
         // First run: install the background agent so the widget has data without the user
-        // having to find a toggle first. Turning it off in the popover sticks.
+        // having to find a toggle first. Turning it off in the right-click menu sticks.
         if !LaunchAgent.isInstalled { try? LaunchAgent.install() }
         model.backgroundRefresh = LaunchAgent.isInstalled
 
@@ -47,7 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self?.render()
         }
 
-        // UsageModel drives a SwiftUI popover; the menu-bar button is AppKit and has no
+        // UsageModel drives a SwiftUI panel; the menu-bar button is AppKit and has no
         // way to observe it, so the model calls back whenever the payload changes.
         model.onChange = { [weak self] in self?.render() }
     }
@@ -79,22 +76,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if event.type == .rightMouseUp {
             showMenu()
         } else {
-            togglePopover()
-        }
-    }
-
-    private func togglePopover() {
-        guard let button = statusItem.button else { return }
-        if popover.isShown {
-            popover.performClose(nil)
-        } else {
-            model.reload()
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            popover.contentViewController?.view.window?.makeKey()
+            guard let button = statusItem.button else { return }
+            if !panel.isVisible { model.reload() }
+            panel.toggle(from: button)
         }
     }
 
     private func showMenu() {
+        panel.hide()
         let menu = NSMenu()
         menu.addItem(withTitle: "Actualizar ahora", action: #selector(refreshNow), keyEquivalent: "r").target = self
 
@@ -113,7 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         statusItem.menu = menu
         statusItem.button?.performClick(nil)
         // A menu assigned to the status item swallows the button action, so it is removed
-        // straight after showing to keep left-click opening the popover.
+        // straight after showing to keep left-click opening the panel.
         statusItem.menu = nil
     }
 

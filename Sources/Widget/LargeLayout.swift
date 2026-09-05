@@ -16,11 +16,12 @@ struct LargeLayout: View {
         return result
     }
 
-    /// Only the models that actually ran; the legend is not a catalogue.
-    private var legend: [ModelUsage] { Array(payload.models.prefix(4)) }
+    /// Only the models that actually ran; the legend is not a catalogue. Three rows is
+    /// what fits once the footer is guaranteed its space.
+    private var legend: [ModelUsage] { Array(payload.models.prefix(3)) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 11) {
+        VStack(alignment: .leading, spacing: 8) {
             UsageHeader(title: "Claude \(payload.plan)",
                         worstPercent: payload.worstPercent,
                         markSize: 18,
@@ -42,11 +43,15 @@ struct LargeLayout: View {
                     .font(.ui(12, .semibold)).monospacedDigit().foregroundStyle(Theme.text)
             }
 
+            // The chart is the one element that can give up height. Everything else has a
+            // fixed size, so letting this flex is what keeps the footer labels on screen
+            // when WidgetKit hands over less room than the prototype's canvas.
             DaysChart(days: payload.days,
                       modelOrder: payload.models.map(\.name),
                       showLabels: true,
                       spacing: 6)
-                .frame(height: 64)
+                .frame(minHeight: 34, maxHeight: 60)
+                .layoutPriority(-1)
 
             VStack(alignment: .leading, spacing: 5) {
                 ForEach(Array(legend.enumerated()), id: \.offset) { index, model in
@@ -66,8 +71,11 @@ struct LargeLayout: View {
                 FooterStat(value: "\(payload.stats.streakDays)d", label: "Racha", divider: true)
                 FooterStat(value: payload.stats.peakHourLabel, label: "Hora pico", divider: true)
             }
-            .padding(.top, 9)
+            .padding(.top, 7)
             .overlay(alignment: .top) { Rectangle().fill(Theme.line).frame(height: 1) }
+            // The footer is the first thing a clipped layout loses, and it is the row that
+            // reads as broken when it goes. Pin it.
+            .layoutPriority(1)
         }
     }
 }
@@ -91,8 +99,8 @@ private struct LimitTile: View {
             Text(Fmt.countdown(to: bar.resetsAt, now: now))
                 .font(.mono(10)).foregroundStyle(Theme.muted).lineLimit(1).minimumScaleFactor(0.8)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 11)
+        .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 12).fill(Theme.elevated))
     }
