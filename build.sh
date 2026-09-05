@@ -10,7 +10,10 @@ APP="$BUILD/$APP_NAME.app"
 APPEX="$APP/Contents/PlugIns/ClaudeUsageWidget.appex"
 INSTALL_DIR="${INSTALL_DIR:-/Applications}"
 
-DEPLOY_TARGET="arm64-apple-macos14.0"
+# Built for the architecture of the machine doing the building, so this works on an
+# Intel Mac as well as Apple Silicon. Ad-hoc signing makes the result local-only anyway,
+# so there is nothing to gain from a universal binary.
+DEPLOY_TARGET="$(uname -m)-apple-macos14.0"
 SDK="$(xcrun --show-sdk-path)"
 SWIFTC=(xcrun swiftc -target "$DEPLOY_TARGET" -sdk "$SDK" -swift-version 5 -O)
 
