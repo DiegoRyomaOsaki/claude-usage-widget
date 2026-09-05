@@ -9,6 +9,17 @@ Renderiza el prototipo de Claude Design *Claude Usage Widget*
 
 ## Qué se ve
 
+<p align="center">
+  <img src="docs/popover.png" alt="Popover de barra de menú" width="290">
+  <img src="docs/large.png" alt="Widget grande" width="350">
+</p>
+<p align="center">
+  <img src="docs/small.png" alt="Widget pequeño" width="165">
+  <img src="docs/medium.png" alt="Widget mediano" width="350">
+</p>
+
+Capturas renderizadas con datos reales de la cuenta.
+
 | Pieza | Tamaño | Contenido |
 |---|---|---|
 | Barra de menú | — | Chispa teñida + % de sesión; el popover trae las tres barras, el gráfico de 7 días y el toggle de refresco |

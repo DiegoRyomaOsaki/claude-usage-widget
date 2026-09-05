@@ -33,7 +33,10 @@ struct LargeLayout: View {
             }
 
             HStack(alignment: .firstTextBaseline) {
-                Text("Últimos 7 días").font(.ui(12)).foregroundStyle(Theme.muted)
+                // Naming the source here keeps this total from reading as plan usage: the
+                // tiles above are the whole account, this is Claude Code on this Mac.
+                Text("Últimos 7 días · Claude Code").font(.ui(12)).foregroundStyle(Theme.muted)
+                    .lineLimit(1).minimumScaleFactor(0.8)
                 Spacer()
                 Text("\(Fmt.tokens(payload.stats.totalTokens)) tokens")
                     .font(.ui(12, .semibold)).monospacedDigit().foregroundStyle(Theme.text)

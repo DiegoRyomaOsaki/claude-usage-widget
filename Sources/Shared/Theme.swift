@@ -172,7 +172,13 @@ struct UsageHeader: View {
     var body: some View {
         HStack(spacing: 7) {
             ClaudeMark(size: markSize)
-            Text(title).font(.ui(titleSize, .semibold)).foregroundStyle(Theme.text)
+            // "Claude Max (5x)" does not fit beside the status label at medium width, and
+            // wrapping it pushes the header two lines tall. Shrinking is the better trade.
+            Text(title)
+                .font(.ui(titleSize, .semibold))
+                .foregroundStyle(Theme.text)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
             Spacer(minLength: 6)
             HStack(spacing: 5) {
                 StatusDot(color: Theme.color(forPercent: worstPercent), animated: animated)

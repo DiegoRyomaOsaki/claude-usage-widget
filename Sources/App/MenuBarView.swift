@@ -110,7 +110,7 @@ struct MenuBarPopover: View {
             Divider().overlay(Theme.line)
 
             HStack(alignment: .firstTextBaseline) {
-                Text("Últimos 7 días").font(.ui(12)).foregroundStyle(Theme.muted)
+                Text("Últimos 7 días · Claude Code").font(.ui(12)).foregroundStyle(Theme.muted)
                 Spacer()
                 Text("\(Fmt.tokens(payload.stats.totalTokens)) tokens")
                     .font(.ui(12, .semibold)).monospacedDigit().foregroundStyle(Theme.text)
@@ -122,23 +122,24 @@ struct MenuBarPopover: View {
                       spacing: 5)
                 .frame(height: 52)
 
-            // The chart counts Claude Code on this Mac only; the bars above are the whole
-            // account. Saying so here is cheaper than a user wondering why they disagree.
-            Text("Tokens de Claude Code en este Mac")
-                .font(.ui(10)).foregroundStyle(Theme.muted)
-
             Divider().overlay(Theme.line)
 
+            // The prototype's footer: a link on the left, freshness and refresh on the
+            // right. Both are plain buttons rather than `Link` and `Toggle`, which drag in
+            // AppKit control chrome that does not match the design. The background-refresh
+            // switch lives in the right-click menu instead.
             HStack(spacing: 10) {
-                Link("Ajustes de uso", destination: URL(string: "https://claude.ai/settings/usage")!)
-                    .font(.ui(11))
-                    .foregroundStyle(Theme.accent)
+                Button { NSWorkspace.shared.open(URL(string: "https://claude.ai/settings/usage")!) } label: {
+                    Text("Ajustes de uso").font(.ui(11)).foregroundStyle(Theme.accent)
+                }
+                .buttonStyle(.plain)
+
                 Spacer()
+
                 Text(Fmt.ago(payload.fetchedAt, now: model.now))
                     .font(.ui(11)).foregroundStyle(Theme.muted)
-                Button {
-                    model.refresh()
-                } label: {
+
+                Button { model.refresh() } label: {
                     Image(systemName: "arrow.clockwise")
                         .font(.ui(11, .semibold))
                         .foregroundStyle(Theme.muted)
@@ -147,12 +148,6 @@ struct MenuBarPopover: View {
                 .disabled(model.isRefreshing)
                 .opacity(model.isRefreshing ? 0.4 : 1)
             }
-
-            Toggle(isOn: Binding(get: { model.backgroundRefresh },
-                                 set: { model.setBackgroundRefresh($0) })) {
-                Text("Refrescar en segundo plano").font(.ui(11)).foregroundStyle(Theme.muted)
-            }
-            .toggleStyle(.checkbox)
         }
         .padding(16)
         .frame(width: 300)

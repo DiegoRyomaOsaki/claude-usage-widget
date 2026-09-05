@@ -50,9 +50,6 @@ enum Credentials {
     ///   sit on the dialog forever, once every five minutes. Background refreshes
     ///   therefore ask for no interaction and fail fast instead.
     static func load(allowInteraction: Bool = true) throws -> OAuth {
-        if !allowInteraction { SecKeychainSetUserInteractionAllowed(false) }
-        defer { if !allowInteraction { SecKeychainSetUserInteractionAllowed(true) } }
-
         guard let raw = rawItem(allowInteraction: allowInteraction) else {
             throw allowInteraction ? Failure.notFound : Failure.needsAuthorization
         }
@@ -79,28 +76,44 @@ enum Credentials {
     /// `/usr/bin/security` is a system binary the user has usually already granted, so
     /// trying it second turns that failure into a working read often enough to matter.
     private static func rawItem(allowInteraction: Bool) -> Data? {
-        var query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var result: CFTypeRef?
-        if SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-           let data = result as? Data, !data.isEmpty {
-            return data
-        }
+        // Order matters, and it is not the obvious one. Reading the item directly is the
+        // right call, but this app is not on the item's ACL, so the first such read puts
+        // an authorization dialog on screen and blocks until someone answers it. The
+        // `security` tool is a system binary the user has usually already allowed, so it
+        // returns the same bytes with no dialog at all.
+        //
+        // So: try the direct read with interaction suppressed, fall back to the tool, and
+        // only then — when both silent paths failed and a human is actually waiting on
+        // this refresh — ask for the dialog. In the common case nobody is ever prompted.
+        if let data = copyMatching(allowInteraction: false) { return data }
+        if let data = securityTool(allowInteraction: allowInteraction) { return data }
+        guard allowInteraction else { return nil }
+        return copyMatching(allowInteraction: true)
+    }
 
-        // Some versions store the item under the user's account name; retry unscoped.
-        query[kSecAttrService as String] = service
-        query[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
-        result = nil
-        if SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-           let data = result as? Data, !data.isEmpty {
-            return data
-        }
+    private static func copyMatching(allowInteraction: Bool) -> Data? {
+        // SecKeychainSetUserInteractionAllowed is deprecated with no modern replacement
+        // for this job: the SecItem API has no per-query way to say "never prompt" for an
+        // ACL denial. It still works, and the alternative is a hung background process.
+        if !allowInteraction { SecKeychainSetUserInteractionAllowed(false) }
+        defer { if !allowInteraction { SecKeychainSetUserInteractionAllowed(true) } }
 
-        return securityTool(allowInteraction: allowInteraction)
+        for synchronizable in [nil, kSecAttrSynchronizableAny] as [CFTypeRef?] {
+            var query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: service,
+                kSecReturnData as String: true,
+                kSecMatchLimit as String: kSecMatchLimitOne,
+            ]
+            if let synchronizable { query[kSecAttrSynchronizable as String] = synchronizable }
+
+            var result: CFTypeRef?
+            if SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+               let data = result as? Data, !data.isEmpty {
+                return data
+            }
+        }
+        return nil
     }
 
     /// The `security` tool can raise the same dialog, so a background read caps how long

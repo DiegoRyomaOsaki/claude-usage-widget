@@ -97,6 +97,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func showMenu() {
         let menu = NSMenu()
         menu.addItem(withTitle: "Actualizar ahora", action: #selector(refreshNow), keyEquivalent: "r").target = self
+
+        let background = menu.addItem(withTitle: "Refrescar en segundo plano",
+                                      action: #selector(toggleBackgroundRefresh), keyEquivalent: "")
+        background.target = self
+        background.state = model.backgroundRefresh ? .on : .off
+
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Ajustes de uso en claude.ai", action: #selector(openSettings), keyEquivalent: "").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Abrir carpeta de datos", action: #selector(openDataFolder), keyEquivalent: "").target = self
@@ -111,6 +118,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     @objc private func refreshNow() { model.refresh() }
+
+    @objc private func toggleBackgroundRefresh() {
+        model.setBackgroundRefresh(!model.backgroundRefresh)
+    }
 
     @objc private func openSettings() {
         NSWorkspace.shared.open(URL(string: "https://claude.ai/settings/usage")!)
