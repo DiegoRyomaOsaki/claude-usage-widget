@@ -81,10 +81,81 @@ extension Font {
     }
 }
 
+// MARK: - Palette
+
+/// The colours a layout actually draws with, resolved for the way the host renders it.
+///
+/// macOS dims desktop widgets into a monochrome vibrant material whenever an app is in
+/// front, and WidgetKit reports that as `WidgetRenderingMode.vibrant`. Vibrancy keeps only
+/// the alpha of what a view draws and throws the hue away, so every solid fill in the
+/// full-colour palette — the tiles, the bars, the mark — collapses to the same flat white
+/// and the widget reads as a row of blank rectangles. The vibrant palette re-expresses the
+/// same hierarchy in alpha, which is the one channel that survives.
+struct Palette {
+    var isVibrant: Bool = false
+    var accent: Color
+    var warn: Color
+    var danger: Color
+    var card: Color
+    var elevated: Color
+    var line: Color
+    var track: Color
+    var text: Color
+    var muted: Color
+    var modelRamp: [Color]
+
+    func color(forPercent percent: Double) -> Color {
+        if percent >= 90 { return danger }
+        if percent >= 70 { return warn }
+        return accent
+    }
+
+    func modelColor(_ index: Int) -> Color { modelRamp[index % modelRamp.count] }
+
+    /// The prototype's palette, used by the menu bar panel and by an undimmed widget.
+    static let fullColor = Palette(
+        accent: Theme.accent, warn: Theme.warn, danger: Theme.danger,
+        card: Theme.card, elevated: Theme.elevated, line: Theme.line, track: Theme.track,
+        text: Theme.text, muted: Theme.muted, modelRamp: Theme.modelRamp)
+
+    /// Vibrancy renders white as fully present and darker content as more translucent, so
+    /// every token here is white at the opacity that reproduces its full-colour weight.
+    /// The severity ramp is nearly flat on purpose — hue cannot carry it, and the status
+    /// label beside the dot already says "Normal", "Alto" or "Al límite" in words.
+    static let vibrant = Palette(
+        isVibrant: true,
+        accent: .white.opacity(0.82),
+        warn: .white.opacity(0.92),
+        danger: .white,
+        // The system draws its own material behind a dimmed widget; painting a card on top
+        // of it is what turns the whole panel into one opaque slab.
+        card: .clear,
+        elevated: .white.opacity(0.16),
+        line: .white.opacity(0.28),
+        track: .white.opacity(0.22),
+        text: .white,
+        muted: .white.opacity(0.62),
+        modelRamp: [1, 0.68, 0.46, 0.34, 0.26, 0.20].map { Color.white.opacity($0) })
+}
+
+private struct PaletteKey: EnvironmentKey {
+    static let defaultValue = Palette.fullColor
+}
+
+extension EnvironmentValues {
+    /// Defaults to full colour, which is what a normal window always gets; only the widget
+    /// root overrides it, and only when the system asks for vibrancy.
+    var palette: Palette {
+        get { self[PaletteKey.self] }
+        set { self[PaletteKey.self] = newValue }
+    }
+}
+
 // MARK: - Components
 
 /// The prototype's rounded progress bar: a track with a rounded fill on top.
 struct UsageBar: View {
+    @Environment(\.palette) private var palette
     var fraction: Double
     var color: Color
     var height: CGFloat = 6
@@ -92,7 +163,7 @@ struct UsageBar: View {
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                Capsule().fill(Theme.track)
+                Capsule().fill(palette.track)
                 Capsule()
                     .fill(color)
                     // A zero-width capsule renders nothing; the prototype still shows a
@@ -106,6 +177,7 @@ struct UsageBar: View {
 
 /// One labelled row: caption on the left, percentage on the right, bar underneath.
 struct LabeledBar: View {
+    @Environment(\.palette) private var palette
     var title: String
     var percent: Double
     var caption: String?
@@ -115,16 +187,16 @@ struct LabeledBar: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(title).font(.ui(titleSize)).foregroundStyle(Theme.muted)
+                Text(title).font(.ui(titleSize)).foregroundStyle(palette.muted)
                 Spacer(minLength: 8)
                 Text("\(Int(percent.rounded()))% usado")
                     .font(.ui(titleSize, .semibold))
                     .monospacedDigit()
-                    .foregroundStyle(Theme.color(forPercent: percent))
+                    .foregroundStyle(palette.color(forPercent: percent))
             }
-            UsageBar(fraction: percent / 100, color: Theme.color(forPercent: percent), height: barHeight)
+            UsageBar(fraction: percent / 100, color: palette.color(forPercent: percent), height: barHeight)
             if let caption {
-                Text(caption).font(.mono(11)).foregroundStyle(Theme.muted)
+                Text(caption).font(.mono(11)).foregroundStyle(palette.muted)
             }
         }
     }
@@ -151,17 +223,27 @@ struct StatusDot: View {
 
 /// The rounded orange square that stands in for the Claude mark.
 struct ClaudeMark: View {
+    @Environment(\.palette) private var palette
     var size: CGFloat = 16
 
     var body: some View {
-        RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
-            .fill(Theme.accent)
-            .frame(width: size, height: size)
+        let shape = RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
+        Group {
+            // Filled, the mark survives vibrancy as a plain white square, which reads as an
+            // image that failed to load rather than as a logo. An outline stays a mark.
+            if palette.isVibrant {
+                shape.strokeBorder(palette.accent, lineWidth: max(1, size * 0.14))
+            } else {
+                shape.fill(palette.accent)
+            }
+        }
+        .frame(width: size, height: size)
     }
 }
 
 /// Header line shared by every layout: mark, plan name, status dot with its label.
 struct UsageHeader: View {
+    @Environment(\.palette) private var palette
     var title: String
     var worstPercent: Double
     var markSize: CGFloat = 16
@@ -176,16 +258,16 @@ struct UsageHeader: View {
             // wrapping it pushes the header two lines tall. Shrinking is the better trade.
             Text(title)
                 .font(.ui(titleSize, .semibold))
-                .foregroundStyle(Theme.text)
+                .foregroundStyle(palette.text)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
             Spacer(minLength: 6)
             HStack(spacing: 5) {
-                StatusDot(color: Theme.color(forPercent: worstPercent), animated: animated)
+                StatusDot(color: palette.color(forPercent: worstPercent), animated: animated)
                 if showLabel {
                     Text(Theme.statusLabel(forPercent: worstPercent))
                         .font(.ui(11, .semibold))
-                        .foregroundStyle(Theme.color(forPercent: worstPercent))
+                        .foregroundStyle(palette.color(forPercent: worstPercent))
                 }
             }
         }
@@ -194,6 +276,7 @@ struct UsageHeader: View {
 
 /// The stacked-bar sparkline: one column per day, one segment per model.
 struct DaysChart: View {
+    @Environment(\.palette) private var palette
     var days: [DayUsage]
     var modelOrder: [String]
     var showLabels: Bool
@@ -212,7 +295,7 @@ struct DaysChart: View {
                                 let tokens = day.byModel[model] ?? 0
                                 if tokens > 0 {
                                     RoundedRectangle(cornerRadius: 2)
-                                        .fill(Theme.modelColor(index))
+                                        .fill(palette.modelColor(index))
                                         .frame(height: max(1.5, geo.size.height * Double(tokens) / Double(maxTotal)))
                                 }
                             }
@@ -220,7 +303,7 @@ struct DaysChart: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                     }
                     if showLabels {
-                        Text(day.label).font(.ui(9)).foregroundStyle(Theme.muted)
+                        Text(day.label).font(.ui(9)).foregroundStyle(palette.muted)
                     }
                 }
             }

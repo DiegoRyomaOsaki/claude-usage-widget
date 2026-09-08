@@ -72,6 +72,18 @@ INSTALL_DIR=~/Applications ./build.sh
 El refresco en segundo plano se instala solo la primera vez: un LaunchAgent que consulta
 cada 5 minutos, para que los widgets sigan al día aunque cierres la app.
 
+### El widget en el escritorio se ve en gris
+
+Es macOS, no el widget: mientras haya una app en primer plano el sistema atenúa los widgets
+del escritorio a un material monocromo, y ahí no existe el color. Le pasa igual a los
+widgets de Apple. La solución es desactivar **Atenuar widgets en el escritorio** en
+*Ajustes del Sistema › Escritorio y Dock › Widgets*.
+
+El widget además trae una paleta para ese modo, que cambia tono por opacidad para que las
+tarjetas y la leyenda no queden como rectángulos blancos. Sólo entra si WidgetKit declara
+`WidgetRenderingMode.vibrant` — el Centro de Notificaciones lo hace; no está comprobado que
+la atenuación del escritorio pase por ahí en vez de componerse sobre el widget ya dibujado.
+
 ## Desinstalación
 
 ```sh

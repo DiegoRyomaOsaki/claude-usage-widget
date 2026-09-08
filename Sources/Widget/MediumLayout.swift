@@ -3,6 +3,7 @@ import WidgetKit
 
 /// `systemMedium`, 364×170 — the prototype's ring next to the weekly rows.
 struct MediumLayout: View {
+    @Environment(\.palette) private var palette
     var payload: UsagePayload
     var now: Date
 
@@ -34,7 +35,7 @@ struct MediumLayout: View {
                     Text("Semanal \(Fmt.countdown(to: payload.weeklyAll?.resetsAt, now: now))")
                 }
                 .font(.mono(10))
-                .foregroundStyle(Theme.muted)
+                .foregroundStyle(palette.muted)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
             }
@@ -44,15 +45,16 @@ struct MediumLayout: View {
 
 /// The prototype's 110pt progress ring with the percentage inside it.
 struct UsageRing: View {
+    @Environment(\.palette) private var palette
     var percent: Double
     var caption: String
 
     var body: some View {
         ZStack {
-            Circle().stroke(Theme.track, lineWidth: 9)
+            Circle().stroke(palette.track, lineWidth: 9)
             Circle()
                 .trim(from: 0, to: min(1, max(0, percent / 100)))
-                .stroke(Theme.color(forPercent: percent),
+                .stroke(palette.color(forPercent: percent),
                         style: StrokeStyle(lineWidth: 9, lineCap: .round))
                 .rotationEffect(.degrees(-90))
             VStack(spacing: 3) {
@@ -60,8 +62,8 @@ struct UsageRing: View {
                     Text("\(Int(percent.rounded()))").font(.ui(28, .bold)).monospacedDigit()
                     Text("%").font(.ui(14, .semibold))
                 }
-                .foregroundStyle(Theme.color(forPercent: percent))
-                Text(caption).font(.ui(10, .medium)).foregroundStyle(Theme.muted)
+                .foregroundStyle(palette.color(forPercent: percent))
+                Text(caption).font(.ui(10, .medium)).foregroundStyle(palette.muted)
             }
         }
         .padding(4.5)
@@ -70,18 +72,19 @@ struct UsageRing: View {
 
 /// A one-line bar row: caption, percentage, then the bar under both.
 struct CompactBar: View {
+    @Environment(\.palette) private var palette
     var title: String
     var percent: Double
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(title).font(.ui(12)).foregroundStyle(Theme.muted).lineLimit(1)
+                Text(title).font(.ui(12)).foregroundStyle(palette.muted).lineLimit(1)
                 Spacer(minLength: 6)
                 Text("\(Int(percent.rounded()))%")
-                    .font(.ui(12, .semibold)).monospacedDigit().foregroundStyle(Theme.text)
+                    .font(.ui(12, .semibold)).monospacedDigit().foregroundStyle(palette.text)
             }
-            UsageBar(fraction: percent / 100, color: Theme.color(forPercent: percent), height: 5)
+            UsageBar(fraction: percent / 100, color: palette.color(forPercent: percent), height: 5)
         }
     }
 }

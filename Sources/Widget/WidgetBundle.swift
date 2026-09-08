@@ -35,7 +35,16 @@ struct UsageProvider: TimelineProvider {
 
 struct ClaudeUsageWidgetView: View {
     @Environment(\.widgetFamily) private var family
+    // macOS renders desktop widgets into a monochrome vibrant material while an app is in
+    // front — the "Atenuar widgets en el escritorio" setting — and Notification Center
+    // always does. Hue is dropped there, so the layouts have to be told to spend alpha
+    // instead of colour; without this they come out as a grid of blank white rectangles.
+    @Environment(\.widgetRenderingMode) private var renderingMode
     var entry: UsageEntry
+
+    private var palette: Palette {
+        renderingMode == .vibrant ? .vibrant : .fullColor
+    }
 
     var body: some View {
         Group {
@@ -45,7 +54,8 @@ struct ClaudeUsageWidgetView: View {
             default:            MediumLayout(payload: entry.payload, now: entry.date)
             }
         }
-        .containerBackground(Theme.card, for: .widget)
+        .environment(\.palette, palette)
+        .containerBackground(palette.card, for: .widget)
         // Tapping the widget opens the menu-bar app, which is also what re-registers the
         // extension after an update.
         .widgetURL(URL(string: "claudeusage://open"))

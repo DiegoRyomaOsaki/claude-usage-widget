@@ -78,8 +78,12 @@ codesign --force --sign - --timestamp=none "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"
 
 echo "==> Instalando en $INSTALL_DIR"
-# A running copy holds its bundle open; stop it before replacing the app.
+# A running copy holds its bundle open; stop it before replacing the app. The widget
+# extension is a separate process that chronod keeps alive, and it goes on serving the old
+# binary from the deleted bundle until it is killed too — which looks exactly like a build
+# that did not take. chronod relaunches it on the next render.
 pkill -x ClaudeUsage 2>/dev/null || true
+pkill -f ClaudeUsageWidget.appex 2>/dev/null || true
 rm -rf "$INSTALL_DIR/$APP_NAME.app"
 cp -R "$APP" "$INSTALL_DIR/$APP_NAME.app"
 
