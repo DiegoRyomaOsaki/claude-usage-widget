@@ -23,3 +23,7 @@ echo "==> Borrando datos locales"
 rm -rf "$SUPPORT" "$CONTAINER"
 
 echo "==> Listo. Quita el widget del escritorio a mano si seguía puesto."
+if grep -q "ClaudeUsageWidget" "$HOME/.claude/statusline-command.sh" 2>/dev/null; then
+  echo "    Tu statusline de Claude Code aún tiene el bloque de Claude Usage. Sin la app no"
+  echo "    hace nada, pero puedes quitarlo de ~/.claude/statusline-command.sh."
+fi

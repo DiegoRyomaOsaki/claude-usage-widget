@@ -31,15 +31,26 @@ final class UsageModel: ObservableObject {
         if let payload = StatusStore.read() { self.payload = payload }
     }
 
-    func refresh() {
+    /// - Parameter force: true when a person asked for it. Those may raise the Keychain
+    ///   dialog and skip the pacing; the app's own timer does neither, and on most ticks
+    ///   finds the last refresh recent enough and just re-reads the file.
+    func refresh(force: Bool = false) {
         guard !isRefreshing else { return }
         isRefreshing = true
-        DispatchQueue.global(qos: .userInitiated).async {
-            let payload = Refresher.refresh()
+        Refresher.queue.async {
+            let payload = Refresher.refresh(interactive: force, force: force)
             DispatchQueue.main.async {
                 self.payload = payload
                 self.isRefreshing = false
             }
+        }
+    }
+
+    /// Claude Code's status line wrote a new snapshot.
+    func ingestLive() {
+        Refresher.queue.async {
+            guard let payload = Refresher.ingestLive() else { return }
+            DispatchQueue.main.async { self.payload = payload }
         }
     }
 
@@ -74,7 +85,7 @@ struct MenuBarPopover: View {
                         animated: true)
 
             if let error = payload.error {
-                ErrorNote(message: error)
+                ErrorNote(message: error, showsLogin: payload.needsLogin == true)
             }
 
             if let session = payload.session {
@@ -136,10 +147,10 @@ struct MenuBarPopover: View {
 
                 Spacer()
 
-                Text(Fmt.ago(payload.fetchedAt, now: model.now))
+                Text(Fmt.ago(payload.lastUpdate, now: model.now))
                     .font(.ui(11)).foregroundStyle(Theme.muted)
 
-                Button { model.refresh() } label: {
+                Button { model.refresh(force: true) } label: {
                     Image(systemName: "arrow.clockwise")
                         .font(.ui(11, .semibold))
                         .foregroundStyle(Theme.muted)
@@ -159,16 +170,29 @@ struct MenuBarPopover: View {
 
 private struct ErrorNote: View {
     var message: String
+    /// The session is gone; offer Claude Code's own login instead of sending the user off
+    /// to open it.
+    var showsLogin = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 6) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.ui(10))
                 .foregroundStyle(Theme.warn)
-            Text(message)
-                .font(.ui(10))
-                .foregroundStyle(Theme.muted)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(message)
+                    .font(.ui(10))
+                    .foregroundStyle(Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                if showsLogin {
+                    Button { ClaudeLogin.open() } label: {
+                        Text("Iniciar sesión en Claude Code")
+                            .font(.ui(10, .semibold))
+                            .foregroundStyle(Theme.accent)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)

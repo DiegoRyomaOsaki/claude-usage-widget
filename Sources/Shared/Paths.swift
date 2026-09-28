@@ -20,6 +20,9 @@ enum Paths {
 
     static var statusFile: URL { localSupport.appendingPathComponent("status.json") }
     static var logFile: URL { localSupport.appendingPathComponent("refresh.log") }
+    /// Written by a line in Claude Code's status-line script, never by this app. See
+    /// `LiveFeed`.
+    static var liveFile: URL { localSupport.appendingPathComponent("live.json") }
 
     /// The extension's sandbox container, as seen from the unsandboxed app.
     static var widgetContainerSupport: URL {

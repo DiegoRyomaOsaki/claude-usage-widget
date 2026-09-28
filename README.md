@@ -67,10 +67,41 @@ INSTALL_DIR=~/Applications ./build.sh
 
 - **Clic izquierdo** en la barra de menú: abre el panel.
 - **Clic derecho**: menú con *Actualizar ahora*, el interruptor de *Refrescar en segundo
-  plano*, los ajustes de uso en claude.ai y *Salir*.
+  plano*, *Iniciar sesión en Claude Code…*, los ajustes de uso en claude.ai y *Salir*.
 
-El refresco en segundo plano se instala solo la primera vez: un LaunchAgent que consulta
-cada 5 minutos, para que los widgets sigan al día aunque cierres la app.
+Mientras la app está abierta consulta la API cada 5 minutos. El refresco en segundo plano
+se instala solo la primera vez: un LaunchAgent con el mismo intervalo, para que los widgets
+sigan al día aunque cierres la app. Ambos se turnan sobre el mismo registro, así que tener
+los dos no duplica peticiones.
+
+### Tiempo real con el statusline de Claude Code
+
+Por defecto las barras se mueven cada 5 minutos como mucho. Con una línea en el script de
+statusline de Claude Code se mueven **tras cada respuesta de Claude Code**, sin llamar a la
+API: Claude Code le pasa al statusline los límites de sesión y semanal en
+`rate_limits`, y este bloque los deja donde la app los vigila. Pégalo en tu script, justo
+después de leer la entrada (`input=$(cat)`); no imprime nada, así que el statusline se ve
+igual:
+
+```sh
+# Claude Usage (widget de macOS): deja los límites del plan donde la app los vigila.
+# Sin la app instalada la carpeta no existe y esto no hace nada.
+live_dir="$HOME/Library/Application Support/ClaudeUsageWidget"
+if [ -d "$live_dir" ]; then
+  live_tmp="$live_dir/.live.$$"
+  echo "$input" | jq -c 'select(.rate_limits) | {at: now, rate_limits}' > "$live_tmp" 2>/dev/null
+  if [ -s "$live_tmp" ]; then mv -f "$live_tmp" "$live_dir/live.json"; else rm -f "$live_tmp"; fi
+fi
+```
+
+Si aún no tienes statusline, créalo con `/statusline` dentro de Claude Code o sigue la
+[documentación](https://code.claude.com/docs/en/statusline). Hace falta `jq`, que macOS
+trae de serie.
+
+Cubre la sesión y el semanal de todos los modelos; el semanal por modelo no viene en esos
+datos y sigue llegando por la API. Varias sesiones de Claude Code escriben el mismo archivo,
+y una inactiva puede reescribir números viejos: la app sólo acepta una lectura si abre una
+ventana nueva o sube el porcentaje de la actual, así que nunca retrocede.
 
 ### El widget en el escritorio se ve en gris
 
@@ -104,8 +135,14 @@ con el token OAuth que **Claude Code ya guarda** en tu llavero, bajo el ítem
 consulta basta.
 
 Nunca se escribe nada de vuelta. Rotar el token de refresco invalidaría la copia de Claude
-Code y cerraría tu sesión del CLI, así que un token caducado se reporta como un aviso
-—«abre Claude Code una vez»— en lugar de renovarse por su cuenta.
+Code y cerraría tu sesión del CLI. El token de acceso dura unas 8 horas, así que tras un
+rato sin usar Claude Code caduca; el panel lo avisa con un botón **Iniciar sesión en Claude
+Code**, que abre Terminal con `claude auth login`. El login lo hace Claude Code, no esta
+app: la app no implementa OAuth propio, porque eso sería hacerse pasar por el cliente de
+Claude Code. Al terminar, el script vuelve a consultar solo.
+
+La API limita las consultas: si responde 429, la app respeta `Retry-After` o, sin él,
+espera 5, 10, 20, 40 y luego 60 minutos, conservando los últimos números con un aviso.
 
 **El histórico de tokens** (gráfico de 7 días, leyenda por modelo y los contadores del pie)
 se agrega de los transcripts de Claude Code en `~/.claude/projects/**/*.jsonl`. La API
@@ -161,8 +198,13 @@ Sin resultados, vuelve a registrar la app:
 **El widget se quedó con datos viejos.** Quítalo del escritorio y vuelve a añadirlo: macOS
 a veces conserva el snapshot anterior tras reinstalar.
 
-**Dice que el token caducó.** Abre Claude Code una vez para que lo renueve, y pulsa
-*Actualizar ahora*.
+**Dice que la sesión caducó.** Pulsa *Iniciar sesión en Claude Code* en el panel (o en el
+menú del clic derecho) y completa el login en el navegador. Abrir Claude Code una vez
+también sirve: renueva el token, y la app lo recoge en la siguiente consulta.
+
+**Dice que Anthropic está limitando las consultas.** Es un 429 de la API; la app reintenta
+sola a la hora que indica. Con el statusline conectado, sesión y semanal siguen al día
+mientras tanto.
 
 **macOS pide permiso para acceder al llavero.** Puede pasar la primera vez. El ítem lo creó
 Claude Code y su lista de acceso sólo autoriza en silencio a los binarios que ya conoce.
@@ -181,8 +223,8 @@ cat "$HOME/Library/Application Support/ClaudeUsageWidget/status.json"
 # El LaunchAgent (la segunda columna es el último código de salida; 0 es correcto)
 launchctl list | grep claudeusage
 
-# Forzar una consulta
-"/Applications/Claude Usage.app/Contents/MacOS/ClaudeUsage" --refresh
+# Forzar una consulta (sin --force se la salta si la app consultó hace menos de 5 min)
+"/Applications/Claude Usage.app/Contents/MacOS/ClaudeUsage" --refresh --force
 ```
 
 ## Cómo está montado
@@ -192,8 +234,10 @@ escribe `status.json` y llama a `WidgetCenter.reloadAllTimelines()`; la extensi�
 el archivo. Eso evita los App Groups, que exigirían una identidad de firma de pago.
 
 ```
-LaunchAgent (5 min) ──▶ ClaudeUsage --refresh ──┬──▶ llavero → api.anthropic.com/api/oauth/usage
-                                                └──▶ ~/.claude/projects/**/*.jsonl
+App de barra de menú (5 min) ─┐
+LaunchAgent (5 min, respaldo) ─┴─▶ refresco ──┬──▶ llavero → api.anthropic.com/api/oauth/usage
+                                              └──▶ ~/.claude/projects/**/*.jsonl
+statusline de Claude Code ──▶ live.json ──▶ app (vigila la carpeta, sin red)
                                  │
                                  ├──▶ ~/Library/Application Support/ClaudeUsageWidget/status.json
                                  └──▶ ~/Library/Containers/io.diegopuerto.claudeusage.widget/…/status.json
@@ -240,6 +284,10 @@ descarta solo al hacer clic fuera, así que lleva un monitor global de eventos.
   una vez.
 - El gráfico de 7 días no ve el uso de la web de claude.ai (explicado arriba).
 - La racha nunca reporta más de 7 días.
+- macOS raciona las recargas de widgets de una app que no está en primer plano, y una app
+  de barra de menú nunca lo está. La barra de menú y el panel reflejan cada cambio al
+  instante; el widget del escritorio puede ir unos minutos por detrás. Para no gastar esa
+  ración en balde, la app sólo pide recargar cuando cambia algo que el widget dibuja.
 
 ## Crédito
 

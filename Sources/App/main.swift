@@ -5,7 +5,9 @@ import SwiftUI
 // agent runs in a background session with no window server, and bringing up
 // NSApplication there would either fail or leave a process behind every five minutes.
 if CommandLine.arguments.contains("--refresh") {
-    let payload = Refresher.refresh(interactive: false)
+    // Without `--force` this skips when the menu-bar app refreshed moments ago.
+    let payload = Refresher.refresh(interactive: false,
+                                    force: CommandLine.arguments.contains("--force"))
     if let error = payload.error {
         FileHandle.standardError.write(Data("\(error)\n".utf8))
         exit(1)
@@ -20,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panel: UsagePanelController!
     private let model = UsageModel()
     private var pollTimer: Timer?
+    private var liveWatcher: FolderWatcher?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -35,13 +38,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.backgroundRefresh = LaunchAgent.isInstalled
 
         render()
-        model.refresh()
+        model.refresh(force: true)
 
-        // The LaunchAgent writes status.json from its own process, so the menu bar has to
-        // re-read the file rather than rely on its own refreshes.
+        // The app polls on its own clock and the LaunchAgent covers for it once it is
+        // quit; the pacing in Refresher keeps the two from both calling the API. Most
+        // ticks find the last refresh — this app's or the agent's — recent enough and only
+        // re-read status.json, which is also how the agent's writes reach the menu bar.
         pollTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-            self?.model.reload()
-            self?.render()
+            self?.model.refresh()
+        }
+
+        liveWatcher = FolderWatcher(url: Paths.localSupport) { [weak self] in
+            self?.model.ingestLive()
         }
 
         // UsageModel drives a SwiftUI panel; the menu-bar button is AppKit and has no
@@ -63,12 +71,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         button.image = image
         button.imagePosition = .imageLeading
 
-        let title = model.payload.fetchedAt == .distantPast ? " —" : " \(Int(percent.rounded()))%"
+        let title = model.payload.isStale ? " —" : " \(Int(percent.rounded()))%"
         button.attributedTitle = NSAttributedString(string: title, attributes: [
             .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium),
             .foregroundColor: NSColor.labelColor,
         ])
-        button.toolTip = model.payload.error ?? "Sesión \(Int(percent.rounded()))% · actualizado \(Fmt.ago(model.payload.fetchedAt))"
+        button.toolTip = model.payload.error ?? "Sesión \(Int(percent.rounded()))% · actualizado \(Fmt.ago(model.payload.lastUpdate))"
+    }
+
+    /// `claudeusage://refresh` is what the login script opens once `claude auth login`
+    /// succeeds.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        if urls.contains(where: { $0.host == "refresh" }) { model.refresh(force: true) }
     }
 
     @objc private func statusItemClicked() {
@@ -92,6 +106,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         background.target = self
         background.state = model.backgroundRefresh ? .on : .off
 
+        menu.addItem(withTitle: "Iniciar sesión en Claude Code…", action: #selector(login), keyEquivalent: "").target = self
+
         menu.addItem(.separator())
         menu.addItem(withTitle: "Ajustes de uso en claude.ai", action: #selector(openSettings), keyEquivalent: "").target = self
         menu.addItem(.separator())
@@ -106,7 +122,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.menu = nil
     }
 
-    @objc private func refreshNow() { model.refresh() }
+    @objc private func refreshNow() { model.refresh(force: true) }
+
+    @objc private func login() { ClaudeLogin.open() }
 
     @objc private func toggleBackgroundRefresh() {
         model.setBackgroundRefresh(!model.backgroundRefresh)

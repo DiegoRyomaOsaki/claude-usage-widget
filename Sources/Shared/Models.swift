@@ -6,6 +6,8 @@ import Foundation
 /// contract between the two processes. Every field is optional or defaulted: a payload
 /// written while the API was unreachable still renders, just with fewer numbers.
 struct UsagePayload: Codable {
+    /// Last time the usage API answered. A failed call leaves it alone, so "hace 20 min"
+    /// in the footer means the numbers really are that old.
     var fetchedAt: Date
     /// "Max (5x)" — derived from the OAuth profile's rate limit tier.
     var plan: String
@@ -30,10 +32,32 @@ struct UsagePayload: Codable {
     var stats: LocalStats
     /// Set when the last refresh failed; the previous numbers are kept alongside it.
     var error: String?
+    /// The failure was a missing or expired Claude Code session, which a login fixes.
+    var needsLogin: Bool?
+    /// Last time Claude Code's status line fed the session and weekly windows in. It
+    /// reports them after every response, so while Claude Code is in use this runs well
+    /// ahead of `fetchedAt`.
+    var liveAt: Date?
+    var sync: SyncState?
 
     static let empty = UsagePayload(fetchedAt: .distantPast, plan: "Claude", session: nil,
                                     weeklyAll: nil, scoped: [], extra: nil, days: [],
                                     models: [], stats: .zero, error: nil)
+}
+
+/// Bookkeeping for the container app's scheduler. The widget never reads it; it lives in
+/// the payload so the menu-bar app and the LaunchAgent, two separate processes, pace
+/// themselves off the same record instead of both polling the API.
+struct SyncState: Codable {
+    /// Last refresh by either process, successful or not.
+    var refreshedAt: Date?
+    /// The API answered 429: no call before this.
+    var retryAfter: Date?
+    /// Consecutive 429s, for the backoff when the API sends no `Retry-After`.
+    var throttled: Int?
+    /// The plan name barely ever changes, so the profile endpoint is asked once a day
+    /// rather than doubling every poll against the rate limit.
+    var planCheckedAt: Date?
 }
 
 /// One usage window: a percentage and when it rolls over.
@@ -151,9 +175,12 @@ extension UsagePayload {
         return values.max() ?? 0
     }
 
+    /// The newer of the API answer and the status-line feed.
+    var lastUpdate: Date { max(fetchedAt, liveAt ?? .distantPast) }
+
     /// True before the first successful refresh — the widget can be added to the desktop
     /// before the app has ever run.
-    var isStale: Bool { fetchedAt == .distantPast }
+    var isStale: Bool { lastUpdate == .distantPast }
 
     /// Shown in the widget gallery, where no real payload exists yet. The numbers match
     /// the design prototype so the gallery preview looks like the finished widget.

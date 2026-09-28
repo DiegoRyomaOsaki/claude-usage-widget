@@ -16,13 +16,17 @@ enum UsageAPI {
 
     enum Failure: LocalizedError {
         case unauthorized
+        /// HTTP 429, with the server's `Retry-After` when it sent one.
+        case rateLimited(retryAfter: TimeInterval?)
         case http(Int)
         case malformed
 
         var errorDescription: String? {
             switch self {
             case .unauthorized:
-                return "El token de Claude Code caducó. Abre Claude Code una vez para renovarlo."
+                return "La sesión de Claude Code caducó. Inicia sesión de nuevo o abre Claude Code una vez."
+            case .rateLimited:
+                return "Anthropic está limitando las consultas de uso."
             case .http(let code):
                 return "La API respondió HTTP \(code)."
             case .malformed:
@@ -76,11 +80,14 @@ enum UsageAPI {
 
         var payload: Data?
         var status = 0
+        var retryAfter: String?
         var transportError: Error?
         let gate = DispatchSemaphore(value: 0)
         URLSession.shared.dataTask(with: request) { data, response, error in
             payload = data
-            status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let http = response as? HTTPURLResponse
+            status = http?.statusCode ?? 0
+            retryAfter = http?.value(forHTTPHeaderField: "Retry-After")
             transportError = error
             gate.signal()
         }.resume()
@@ -88,12 +95,24 @@ enum UsageAPI {
 
         if let transportError { throw transportError }
         if status == 401 || status == 403 { throw Failure.unauthorized }
+        if status == 429 { throw Failure.rateLimited(retryAfter: seconds(fromRetryAfter: retryAfter)) }
         guard status == 200 else { throw Failure.http(status) }
         guard let payload,
               let json = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else {
             throw Failure.malformed
         }
         return json
+    }
+
+    /// `Retry-After` is either a number of seconds or an HTTP date.
+    private static func seconds(fromRetryAfter value: String?) -> TimeInterval? {
+        guard let value = value?.trimmingCharacters(in: .whitespaces), !value.isEmpty else { return nil }
+        if let seconds = TimeInterval(value) { return max(0, seconds) }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        guard let date = formatter.date(from: value) else { return nil }
+        return max(0, date.timeIntervalSinceNow)
     }
 
     // MARK: - Parsing
