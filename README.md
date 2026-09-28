@@ -202,6 +202,10 @@ a veces conserva el snapshot anterior tras reinstalar.
 menú del clic derecho) y completa el login en el navegador. Abrir Claude Code una vez
 también sirve: renueva el token, y la app lo recoge en la siguiente consulta.
 
+<p align="center">
+  <img src="docs/login.png" alt="Panel con la sesión caducada y el botón Iniciar sesión en Claude Code" width="290">
+</p>
+
 **Dice que Anthropic está limitando las consultas.** Es un 429 de la API; la app reintenta
 sola a la hora que indica. Con el statusline conectado, sesión y semanal siguen al día
 mientras tanto.
